@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workout Tracker</title>
+<style>
+  body, html {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: white; overflow: hidden;
+    transition: background-color 0.5s ease;
+  }
+  .bg-setup { background-color: #1e1e1e; }
+  .bg-slow { background-color: darkgreen; }
+  .bg-fast { background-color: darkred; }
+  
+  /* Layouts */
+  .screen {
+    display: none; width: 100%; height: 100%;
+  }
+  .screen.active { display: flex; }
+  
+  #setup-screen, #summary-screen {
+    flex-direction: column; justify-content: center; align-items: center;
+  }
+  
+  /* Tracker & Sidebar */
+  #tracker-screen {
+    flex-direction: row;
+  }
+  
+  .sidebar {
+    width: 0; overflow: hidden; 
+    background: rgba(0,0,0,0.4);
+    transition: width 0.4s ease, border-right 0.4s ease;
+    display: flex; flex-direction: column; justify-content: center;
+    border-right: 0px solid rgba(255,255,255,0.5);
+    white-space: nowrap;
+  }
+  .sidebar.active {
+    width: 350px;
+    border-right: 4px solid rgba(255,255,255,0.7);
+  }
+  .sidebar-content {
+    padding: 2rem;
+    text-align: center;
+    white-space: normal;
+    font-size: 2rem;
+    font-weight: bold;
+    line-height: 1.4;
+  }
+  
+  #main-tracker {
+    flex: 1; 
+    display: flex; flex-direction: column; 
+    justify-content: space-evenly; align-items: center;
+    transition: all 0.4s ease;
+  }
+  
+  .number-container { text-align: center; }
+  .label { font-size: 3vh; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7; margin-bottom: -1vh; }
+  .number { font-weight: bold; line-height: 1; }
+  
+  #total-time { font-size: 15vh; }
+  #phase-time { font-size: 35vh; }
+  #sets-display { font-size: 15vh; }
+  
+  /* Setup & Summary */
+  .card {
+    background: rgba(0,0,0,0.5); padding: 2rem; border-radius: 1rem;
+    max-width: 90%; width: 400px; text-align: center;
+  }
+  h1 { margin-top: 0; font-size: 2rem; }
+  .form-group { margin-bottom: 1.5rem; text-align: left; }
+  label { display: block; margin-bottom: 0.5rem; font-size: 1.1rem; }
+  input[type="number"] {
+    width: 100%; padding: 0.5rem; font-size: 1.2rem;
+    background: #333; color: white; border: 1px solid #555; border-radius: 0.25rem; box-sizing: border-box;
+  }
+  .preset-btns { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .btn {
+    flex: 1; padding: 0.5rem; font-size: 1rem; cursor: pointer;
+    background: #444; color: white; border: none; border-radius: 0.25rem;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #555; }
+  .btn-primary {
+    background: #28a745; width: 100%; padding: 1rem; font-size: 1.5rem; font-weight: bold; margin-top: 1rem;
+  }
+  .btn-primary:hover { background: #218838; }
+</style>
+</head>
+<body class="bg-setup">
+
+<div id="setup-screen" class="screen active">
+  <div class="card">
+    <h1>Workout Setup</h1>
+    <div class="form-group">
+      <label>Total Workout Duration (Minutes)</label>
+      <div class="preset-btns">
+        <button class="btn" onclick="setPreset(60)">60m</button>
+        <button class="btn" onclick="setPreset(90)">90m</button>
+        <button class="btn" onclick="setPreset(120)">120m</button>
+      </div>
+      <input type="number" id="input-minutes" step="1" value="60" placeholder="Custom minutes...">
+    </div>
+    <div class="form-group">
+      <label>Slow Phase (minutes)</label>
+      <input type="number" id="input-slow" step="0.5" value="2">
+    </div>
+    <div class="form-group">
+      <label>Fast Phase (minutes)</label>
+      <input type="number" id="input-fast" step="0.5" value="3">
+    </div>
+    <button class="btn btn-primary" onclick="startWorkout()">START</button>
+  </div>
+</div>
+
+<div id="tracker-screen" class="screen">
+  <div id="pause-sidebar" class="sidebar">
+    <div class="sidebar-content">
+      Press SPACE again to enter a 5 minute pause.
+    </div>
+  </div>
+  <div id="main-tracker">
+    <div class="number-container">
+      <div class="label">Total Time Passed</div>
+      <div id="total-time" class="number">00:00:00</div>
+    </div>
+    <div class="number-container">
+      <div class="label" id="phase-label">Slow Phase</div>
+      <div id="phase-time" class="number">00:00</div>
+    </div>
+    <div class="number-container">
+      <div class="label">Current Set</div>
+      <div id="sets-display" class="number">1 / 1</div>
+      <div id="current-distance" class="label" style="margin-top: 1vh; font-size: 2.5vh; opacity: 0.9;">0.00 km traveled</div>
+    </div>
+  </div>
+</div>
+
+<div id="summary-screen" class="screen">
+  <div class="card">
+    <h1>Workout Complete!</h1>
+    <h2 style="font-size: 3rem; margin: 1rem 0;" id="final-distance">0.00 km</h2>
+    <p style="font-size: 1.2rem;">Great job! You completed all sets and the 5-minute cooldown.</p>
+    <button class="btn btn-primary" onclick="location.reload()">RESTART</button>
+  </div>
+</div>
+
+<script>
+// State
+let audioCtx = null;
+let timerInterval = null;
+
+let totalMinutesInput = 60;
+let slowMin = 2;
+let fastMin = 3;
+
+let totalSecsPassed = 0;
+let phaseSecsRemaining = 0;
+let totalSets = 0;
+let currentSet = 1;
+let currentPhase = 'slow'; // 'slow', 'fast', 'cooldown', 'pause'
+let totalDistanceKm = 0;
+
+// Pause Prompt State
+let isPromptingPause = false;
+let promptTimeout = null;
+let savedPhase = null;
+let savedTime = 0;
+
+function setPreset(minutes) {
+  document.getElementById('input-minutes').value = minutes;
+}
+
+function formatTime(totalSecs, includeHours = false) {
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  
+  const pad = num => num.toString().padStart(2, '0');
+  
+  if (includeHours) {
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  }
+  if (totalSecs >= 3600) {
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  }
+  return `${pad(m)}:${pad(s)}`;
+}
+
+function playDing() {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  
+  osc.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Note A5
+  
+  gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+  gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.05);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+  
+  osc.start(audioCtx.currentTime);
+  osc.stop(audioCtx.currentTime + 0.5);
+}
+
+function updateUI() {
+  document.getElementById('total-time').innerText = formatTime(totalSecsPassed, true);
+  document.getElementById('phase-time').innerText = formatTime(phaseSecsRemaining, false);
+  
+  if (currentPhase === 'cooldown') {
+    document.getElementById('sets-display').innerText = "DONE";
+    document.getElementById('phase-label').innerText = "Cooldown (Slow)";
+  } else if (currentPhase === 'pause') {
+    document.getElementById('sets-display').innerText = "PAUSED";
+    document.getElementById('phase-label').innerText = "Riding Break (Slow)";
+  } else {
+    document.getElementById('sets-display').innerText = `${currentSet} / ${totalSets}`;
+    document.getElementById('phase-label').innerText = currentPhase === 'slow' ? "Slow Phase" : "Fast Phase";
+  }
+  
+  document.getElementById('current-distance').innerText = totalDistanceKm.toFixed(2) + " km traveled";
+}
+
+function setPhase(phase) {
+  currentPhase = phase;
+  document.body.className = '';
+  if (phase === 'slow' || phase === 'cooldown' || phase === 'pause') {
+    document.body.classList.add('bg-slow');
+  } else {
+    document.body.classList.add('bg-fast');
+  }
+}
+
+function tick() {
+  // Accumulate distance (Fast = 20km/h, everything else = 10km/h)
+  const speed = (currentPhase === 'fast') ? 20 : 10;
+  totalDistanceKm += speed / 3600;
+  
+  totalSecsPassed++;
+  phaseSecsRemaining--;
+  
+  // Ding on last 5 seconds
+  if (phaseSecsRemaining <= 5 && phaseSecsRemaining > 0) {
+    playDing();
+  }
+  
+  // Phase Transition
+  if (phaseSecsRemaining <= 0) {
+    if (currentPhase === 'pause') {
+      // Resume from pause
+      setPhase(savedPhase);
+      phaseSecsRemaining = savedTime;
+    }
+    else if (currentPhase === 'slow') {
+      setPhase('fast');
+      phaseSecsRemaining = Math.floor(fastMin * 60);
+    } 
+    else if (currentPhase === 'fast') {
+      if (currentSet < totalSets) {
+        currentSet++;
+        setPhase('slow');
+        phaseSecsRemaining = Math.floor(slowMin * 60);
+      } else {
+        setPhase('cooldown');
+        phaseSecsRemaining = 5 * 60; // 5 min cooldown
+      }
+    }
+    else if (currentPhase === 'cooldown') {
+      // End Workout
+      clearInterval(timerInterval);
+      document.getElementById('tracker-screen').classList.remove('active');
+      document.getElementById('summary-screen').classList.add('active');
+      document.getElementById('final-distance').innerText = totalDistanceKm.toFixed(2) + " km";
+      document.body.className = 'bg-setup';
+      return;
+    }
+  }
+  
+  updateUI();
+}
+
+// Handle Spacebar Logic
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && document.getElementById('tracker-screen').classList.contains('active')) {
+    e.preventDefault(); // Prevent page scroll
+    
+    // Don't allow pausing if already in cooldown
+    if (currentPhase === 'cooldown') return;
+
+    if (!isPromptingPause && currentPhase !== 'pause') {
+      // First Press: Slide in prompt
+      isPromptingPause = true;
+      document.getElementById('pause-sidebar').classList.add('active');
+      
+      promptTimeout = setTimeout(() => {
+        isPromptingPause = false;
+        document.getElementById('pause-sidebar').classList.remove('active');
+      }, 5000);
+    } else if (isPromptingPause) {
+      // Second Press within 5 seconds: Enter Pause Mode
+      clearTimeout(promptTimeout);
+      isPromptingPause = false;
+      document.getElementById('pause-sidebar').classList.remove('active');
+      
+      savedPhase = currentPhase;
+      savedTime = phaseSecsRemaining;
+      setPhase('pause');
+      phaseSecsRemaining = 5 * 60; // 5 minute riding break
+      
+      updateUI();
+    }
+  }
+});
+
+function startWorkout() {
+  // Initialize Web Audio API on user gesture
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!audioCtx) audioCtx = new AudioContext();
+  
+  // Parse inputs
+  totalMinutesInput = parseFloat(document.getElementById('input-minutes').value) || 60;
+  slowMin = parseFloat(document.getElementById('input-slow').value) || 2;
+  fastMin = parseFloat(document.getElementById('input-fast').value) || 3;
+  
+  const setMinutes = slowMin + fastMin;
+  
+  // Calculate total sets
+  totalSets = Math.ceil(totalMinutesInput / setMinutes);
+  currentSet = 1;
+  
+  // Initialize state
+  totalSecsPassed = 0;
+  totalDistanceKm = 0;
+  phaseSecsRemaining = Math.floor(slowMin * 60);
+  
+  // Reset Pause State
+  isPromptingPause = false;
+  clearTimeout(promptTimeout);
+  document.getElementById('pause-sidebar').classList.remove('active');
+  
+  // Switch Screens
+  document.getElementById('setup-screen').classList.remove('active');
+  document.getElementById('tracker-screen').classList.add('active');
+  
+  setPhase('slow');
+  updateUI();
+  
+  // Start Timer
+  timerInterval = setInterval(tick, 1000);
+}
+</script>
+</body>
+</html>
