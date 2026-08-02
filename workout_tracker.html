@@ -175,11 +175,11 @@
     <div class="number-container">
       <div class="label">Current Set</div>
       <div id="sets-display" class="number">1 / 1</div>
-      <div id="current-distance" class="label" style="margin-top: 1vh; font-size: 2.5vh; opacity: 0.9;">0.00 km traveled</div>
+      <div id="current-distance" class="label" style="margin-top: 1vh; font-size: 2.5vh; opacity: 0.9;">0.000 km traveled</div>
     </div>
     <div class="number-container">
       <div class="label">Calories Burned</div>
-      <div id="calories-display" class="number">0</div>
+      <div id="calories-display" class="number">0.000</div>
     </div>
   </div>
 </div>
@@ -192,7 +192,7 @@
 <div id="summary-screen" class="screen">
   <div class="card">
     <h1>Workout Complete!</h1>
-    <h2 style="font-size: 3rem; margin: 1rem 0;" id="final-distance">0.00 km</h2>
+    <h2 style="font-size: 3rem; margin: 1rem 0;" id="final-distance">0.000 km</h2>
     <p style="font-size: 1.2rem;">Great job! You completed all sets and the 5-minute cooldown.</p>
     <button class="btn btn-primary" onclick="location.reload()">RESTART</button>
   </div>
@@ -302,8 +302,8 @@ function updateUI() {
     document.getElementById('phase-label').innerText = currentPhase === 'slow' ? "Slow Phase" : "Fast Phase";
   }
   
-  document.getElementById('current-distance').innerText = totalDistanceKm.toFixed(2) + " km traveled";
-  document.getElementById('calories-display').innerText = Math.floor(totalCalories);
+  document.getElementById('current-distance').innerText = totalDistanceKm.toFixed(3) + " km traveled";
+  document.getElementById('calories-display').innerText = totalCalories.toFixed(3);
 }
 
 function setPhase(phase) {
@@ -376,7 +376,7 @@ function tick() {
       clearInterval(timerInterval);
       document.getElementById('tracker-screen').classList.remove('active');
       document.getElementById('summary-screen').classList.add('active');
-      document.getElementById('final-distance').innerText = totalDistanceKm.toFixed(2) + " km";
+      document.getElementById('final-distance').innerText = totalDistanceKm.toFixed(3) + " km";
       document.body.className = 'bg-setup';
       return;
     }
