@@ -121,6 +121,11 @@
     <h1>Workout Setup</h1>
     <div class="form-group">
       <label>Total Workout Duration (Minutes)</label>
+      <div class="preset-btns" style="margin-bottom: 0.5rem;">
+        <button class="btn" onclick="setPreset(15)">15m</button>
+        <button class="btn" onclick="setPreset(30)">30m</button>
+        <button class="btn" onclick="setPreset(45)">45m</button>
+      </div>
       <div class="preset-btns">
         <button class="btn" onclick="setPreset(60)">60m</button>
         <button class="btn" onclick="setPreset(90)">90m</button>
@@ -314,8 +319,8 @@ function animateUI(timestamp) {
   const deltaTime = (timestamp - lastFrameTime) / 1000; // in seconds
   lastFrameTime = timestamp;
   
-  // Accumulate distance (Fast = 20km/h, everything else = 10km/h)
-  const speed = (currentPhase === 'fast') ? 20 : 10;
+  // Accumulate distance based on current BPM
+  const speed = Math.max(0, (currentBpm - 60) * 0.3);
   totalDistanceKm += speed * (deltaTime / 3600);
   
   // Calculate Calories (Keytel et al.)
@@ -347,10 +352,10 @@ function setPhase(phase) {
 }
 
 function tick() {
-  // BPM Prompt Logic (Every 30 seconds, during active workout only)
+  // BPM Prompt Logic (Every 60 seconds, during active workout only)
   if (currentPhase !== 'pause' && currentPhase !== 'cooldown') {
     bpmPromptTimer++;
-    if (bpmPromptTimer >= 30) {
+    if (bpmPromptTimer >= 60) {
       showBpmPrompt();
       bpmPromptTimer = 0;
     }
@@ -372,17 +377,33 @@ function tick() {
       phaseSecsRemaining = savedTime;
     }
     else if (currentPhase === 'slow') {
-      setPhase('fast');
-      phaseSecsRemaining = Math.floor(fastMin * 60);
+      if (fastMin > 0) {
+        setPhase('fast');
+        phaseSecsRemaining = Math.floor(fastMin * 60);
+      } else {
+        if (currentSet < totalSets) {
+          currentSet++;
+          setPhase('slow');
+          phaseSecsRemaining = Math.floor(slowMin * 60);
+        } else {
+          setPhase('cooldown');
+          phaseSecsRemaining = 5 * 60;
+        }
+      }
     } 
     else if (currentPhase === 'fast') {
       if (currentSet < totalSets) {
         currentSet++;
-        setPhase('slow');
-        phaseSecsRemaining = Math.floor(slowMin * 60);
+        if (slowMin > 0) {
+          setPhase('slow');
+          phaseSecsRemaining = Math.floor(slowMin * 60);
+        } else {
+          setPhase('fast');
+          phaseSecsRemaining = Math.floor(fastMin * 60);
+        }
       } else {
         setPhase('cooldown');
-        phaseSecsRemaining = 5 * 60; // 5 min cooldown
+        phaseSecsRemaining = 5 * 60;
       }
     }
     else if (currentPhase === 'cooldown') {
@@ -427,12 +448,21 @@ document.getElementById('bpm-input').addEventListener('keydown', (e) => {
   }
 });
 
-// Handle Spacebar Logic
+// Handle Global Keybinds
 document.addEventListener('keydown', (e) => {
+  if (!document.getElementById('tracker-screen').classList.contains('active')) return;
+  
+  // Manual BPM Prompt ('H')
+  if (e.key.toLowerCase() === 'h' && !isBpmPromptActive && currentPhase !== 'cooldown') {
+    showBpmPrompt();
+    bpmPromptTimer = 0;
+    return;
+  }
+
   // If BPM prompt is active, spacebar shouldn't trigger pause
   if (isBpmPromptActive) return;
 
-  if (e.code === 'Space' && document.getElementById('tracker-screen').classList.contains('active')) {
+  if (e.code === 'Space') {
     e.preventDefault(); // Prevent page scroll
     
     // Don't allow pausing if already in cooldown
@@ -478,6 +508,7 @@ function startWorkout() {
   userIsMale = document.getElementById('input-gender').value === 'male';
   
   const setMinutes = slowMin + fastMin;
+  if (setMinutes <= 0) return; // Prevent zero-length sets
   
   // Calculate total sets
   totalSets = Math.ceil(totalMinutesInput / setMinutes);
@@ -492,7 +523,12 @@ function startWorkout() {
   bpmPromptTimer = 0;
   isBpmPromptActive = false;
   document.getElementById('bpm-overlay').classList.remove('active');
-  phaseSecsRemaining = Math.floor(slowMin * 60);
+  
+  if (slowMin > 0) {
+    phaseSecsRemaining = Math.floor(slowMin * 60);
+  } else {
+    phaseSecsRemaining = Math.floor(fastMin * 60);
+  }
   
   // Reset Pause State
   isPromptingPause = false;
@@ -503,7 +539,11 @@ function startWorkout() {
   document.getElementById('setup-screen').classList.remove('active');
   document.getElementById('tracker-screen').classList.add('active');
   
-  setPhase('slow');
+  if (slowMin > 0) {
+    setPhase('slow');
+  } else {
+    setPhase('fast');
+  }
   updateUI();
   
   // Start Timer
