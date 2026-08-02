@@ -223,6 +223,11 @@ let currentBpm = 80;
 let bpmPromptTimer = 0;
 let isBpmPromptActive = false;
 
+// Animation State
+let displayDistance = 0;
+let displayCalories = 0;
+let animFrameId = null;
+
 // Pause Prompt State
 let isPromptingPause = false;
 let promptTimeout = null;
@@ -301,9 +306,19 @@ function updateUI() {
     document.getElementById('sets-display').innerText = `${currentSet} / ${totalSets}`;
     document.getElementById('phase-label').innerText = currentPhase === 'slow' ? "Slow Phase" : "Fast Phase";
   }
+}
+
+function animateUI() {
+  if (!document.getElementById('tracker-screen').classList.contains('active')) return;
   
-  document.getElementById('current-distance').innerText = totalDistanceKm.toFixed(3) + " km traveled";
-  document.getElementById('calories-display').innerText = totalCalories.toFixed(3);
+  // Interpolate (lerp) towards the true calculated values smoothly
+  displayDistance += (totalDistanceKm - displayDistance) * 0.08;
+  displayCalories += (totalCalories - displayCalories) * 0.08;
+  
+  document.getElementById('current-distance').innerText = displayDistance.toFixed(3) + " km traveled";
+  document.getElementById('calories-display').innerText = displayCalories.toFixed(3);
+  
+  animFrameId = requestAnimationFrame(animateUI);
 }
 
 function setPhase(phase) {
@@ -374,6 +389,7 @@ function tick() {
     else if (currentPhase === 'cooldown') {
       // End Workout
       clearInterval(timerInterval);
+      if (animFrameId) cancelAnimationFrame(animFrameId);
       document.getElementById('tracker-screen').classList.remove('active');
       document.getElementById('summary-screen').classList.add('active');
       document.getElementById('final-distance').innerText = totalDistanceKm.toFixed(3) + " km";
@@ -472,6 +488,8 @@ function startWorkout() {
   totalSecsPassed = 0;
   totalDistanceKm = 0;
   totalCalories = 0;
+  displayDistance = 0;
+  displayCalories = 0;
   currentBpm = 80; // Default resting BPM until first entry
   bpmPromptTimer = 0;
   isBpmPromptActive = false;
@@ -492,6 +510,10 @@ function startWorkout() {
   
   // Start Timer
   timerInterval = setInterval(tick, 1000);
+  
+  // Start smooth UI animation loop
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  animFrameId = requestAnimationFrame(animateUI);
 }
 </script>
 </body>
