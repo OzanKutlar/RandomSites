@@ -224,8 +224,7 @@ let bpmPromptTimer = 0;
 let isBpmPromptActive = false;
 
 // Animation State
-let displayDistance = 0;
-let displayCalories = 0;
+let lastFrameTime = 0;
 let animFrameId = null;
 
 // Pause Prompt State
@@ -308,15 +307,31 @@ function updateUI() {
   }
 }
 
-function animateUI() {
+function animateUI(timestamp) {
   if (!document.getElementById('tracker-screen').classList.contains('active')) return;
   
-  // Interpolate (lerp) towards the true calculated values smoothly
-  displayDistance += (totalDistanceKm - displayDistance) * 0.08;
-  displayCalories += (totalCalories - displayCalories) * 0.08;
+  if (!lastFrameTime) lastFrameTime = timestamp;
+  const deltaTime = (timestamp - lastFrameTime) / 1000; // in seconds
+  lastFrameTime = timestamp;
   
-  document.getElementById('current-distance').innerText = displayDistance.toFixed(3) + " km traveled";
-  document.getElementById('calories-display').innerText = displayCalories.toFixed(3);
+  // Accumulate distance (Fast = 20km/h, everything else = 10km/h)
+  const speed = (currentPhase === 'fast') ? 20 : 10;
+  totalDistanceKm += speed * (deltaTime / 3600);
+  
+  // Calculate Calories (Keytel et al.)
+  if (currentPhase !== 'pause') {
+    let calsPerMin = 0;
+    if (userIsMale) {
+      calsPerMin = (-55.0969 + (0.6309 * currentBpm) + (0.1988 * userWeight) + (0.2017 * userAge)) / 4.184;
+    } else {
+      calsPerMin = (-20.4022 + (0.4472 * currentBpm) - (0.1263 * userWeight) + (0.0740 * userAge)) / 4.184;
+    }
+    if (calsPerMin < 0) calsPerMin = 0;
+    totalCalories += calsPerMin * (deltaTime / 60);
+  }
+  
+  document.getElementById('current-distance').innerText = totalDistanceKm.toFixed(3) + " km traveled";
+  document.getElementById('calories-display').innerText = totalCalories.toFixed(3);
   
   animFrameId = requestAnimationFrame(animateUI);
 }
@@ -332,28 +347,12 @@ function setPhase(phase) {
 }
 
 function tick() {
-  // Accumulate distance (Fast = 20km/h, everything else = 10km/h)
-  const speed = (currentPhase === 'fast') ? 20 : 10;
-  totalDistanceKm += speed / 3600;
-  
-  // Calculate Calories (Keytel et al.)
-  if (currentPhase !== 'pause') {
-    let calsPerMin = 0;
-    if (userIsMale) {
-      calsPerMin = (-55.0969 + (0.6309 * currentBpm) + (0.1988 * userWeight) + (0.2017 * userAge)) / 4.184;
-    } else {
-      calsPerMin = (-20.4022 + (0.4472 * currentBpm) - (0.1263 * userWeight) + (0.0740 * userAge)) / 4.184;
-    }
-    if (calsPerMin < 0) calsPerMin = 0;
-    totalCalories += calsPerMin / 60;
-    
-    // BPM Prompt Logic (Every 30 seconds, during active workout only)
-    if (currentPhase !== 'cooldown') {
-      bpmPromptTimer++;
-      if (bpmPromptTimer >= 30) {
-        showBpmPrompt();
-        bpmPromptTimer = 0;
-      }
+  // BPM Prompt Logic (Every 30 seconds, during active workout only)
+  if (currentPhase !== 'pause' && currentPhase !== 'cooldown') {
+    bpmPromptTimer++;
+    if (bpmPromptTimer >= 30) {
+      showBpmPrompt();
+      bpmPromptTimer = 0;
     }
   }
   
@@ -488,8 +487,7 @@ function startWorkout() {
   totalSecsPassed = 0;
   totalDistanceKm = 0;
   totalCalories = 0;
-  displayDistance = 0;
-  displayCalories = 0;
+  lastFrameTime = 0;
   currentBpm = 80; // Default resting BPM until first entry
   bpmPromptTimer = 0;
   isBpmPromptActive = false;
