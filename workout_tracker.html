@@ -62,10 +62,33 @@
   .label { font-size: 3vh; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7; margin-bottom: -1vh; }
   .number { font-weight: bold; line-height: 1; }
   
-  #total-time { font-size: 15vh; }
-  #phase-time { font-size: 35vh; }
-  #sets-display { font-size: 15vh; }
+  #total-time { font-size: 10vh; }
+  #phase-time { font-size: 25vh; }
+  #sets-display { font-size: 10vh; }
+  #calories-display { font-size: 10vh; color: #ff9800; }
   
+  #bpm-overlay {
+    display: none;
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.8);
+    z-index: 1000;
+    flex-direction: column; justify-content: center; align-items: center;
+  }
+  #bpm-overlay.active { display: flex; animation: flash 1s 3; }
+  @keyframes flash {
+    0%, 100% { background: rgba(0,0,0,0.8); }
+    50% { background: rgba(255,255,255,0.3); }
+  }
+  .bpm-title { font-size: 10vh; font-weight: bold; margin-bottom: 2vh; text-transform: uppercase; letter-spacing: 3px; }
+  #bpm-input {
+    font-size: 25vh; width: 60%; text-align: center;
+    background: transparent; border: none; color: white; border-bottom: 8px solid white;
+    outline: none; font-weight: bold;
+  }
+  #bpm-input::-webkit-outer-spin-button,
+  #bpm-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  #bpm-input[type=number] { -moz-appearance: textfield; }
+
   /* Setup & Summary */
   .card {
     background: rgba(0,0,0,0.5); padding: 2rem; border-radius: 1rem;
@@ -113,6 +136,23 @@
       <label>Fast Phase (minutes)</label>
       <input type="number" id="input-fast" step="0.5" value="3">
     </div>
+    <div style="display: flex; gap: 1rem;">
+      <div class="form-group" style="flex: 1;">
+        <label>Age</label>
+        <input type="number" id="input-age" step="1" value="22">
+      </div>
+      <div class="form-group" style="flex: 1;">
+        <label>Weight (kg)</label>
+        <input type="number" id="input-weight" step="0.1" value="96">
+      </div>
+      <div class="form-group" style="flex: 1;">
+        <label>Gender</label>
+        <select id="input-gender" style="width: 100%; padding: 0.5rem; font-size: 1.2rem; background: #333; color: white; border: 1px solid #555; border-radius: 0.25rem; height: 43px;">
+          <option value="male" selected>Male</option>
+          <option value="female">Female</option>
+        </select>
+      </div>
+    </div>
     <button class="btn btn-primary" onclick="startWorkout()">START</button>
   </div>
 </div>
@@ -137,7 +177,16 @@
       <div id="sets-display" class="number">1 / 1</div>
       <div id="current-distance" class="label" style="margin-top: 1vh; font-size: 2.5vh; opacity: 0.9;">0.00 km traveled</div>
     </div>
+    <div class="number-container">
+      <div class="label">Calories Burned</div>
+      <div id="calories-display" class="number">0</div>
+    </div>
   </div>
+</div>
+
+<div id="bpm-overlay">
+  <div class="bpm-title">Enter BPM</div>
+  <input type="number" id="bpm-input" placeholder="BPM" autocomplete="off">
 </div>
 
 <div id="summary-screen" class="screen">
@@ -164,6 +213,15 @@ let totalSets = 0;
 let currentSet = 1;
 let currentPhase = 'slow'; // 'slow', 'fast', 'cooldown', 'pause'
 let totalDistanceKm = 0;
+
+// Demographics & Calories
+let userAge = 22;
+let userWeight = 96;
+let userIsMale = true;
+let totalCalories = 0;
+let currentBpm = 80;
+let bpmPromptTimer = 0;
+let isBpmPromptActive = false;
 
 // Pause Prompt State
 let isPromptingPause = false;
@@ -210,6 +268,25 @@ function playDing() {
   osc.stop(audioCtx.currentTime + 0.5);
 }
 
+function playSoftDing() {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  
+  osc.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(440, audioCtx.currentTime); // Note A4 (softer)
+  
+  gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+  gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.05);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+  
+  osc.start(audioCtx.currentTime);
+  osc.stop(audioCtx.currentTime + 0.5);
+}
+
 function updateUI() {
   document.getElementById('total-time').innerText = formatTime(totalSecsPassed, true);
   document.getElementById('phase-time').innerText = formatTime(phaseSecsRemaining, false);
@@ -226,6 +303,7 @@ function updateUI() {
   }
   
   document.getElementById('current-distance').innerText = totalDistanceKm.toFixed(2) + " km traveled";
+  document.getElementById('calories-display').innerText = Math.floor(totalCalories);
 }
 
 function setPhase(phase) {
@@ -242,6 +320,27 @@ function tick() {
   // Accumulate distance (Fast = 20km/h, everything else = 10km/h)
   const speed = (currentPhase === 'fast') ? 20 : 10;
   totalDistanceKm += speed / 3600;
+  
+  // Calculate Calories (Keytel et al.)
+  if (currentPhase !== 'pause') {
+    let calsPerMin = 0;
+    if (userIsMale) {
+      calsPerMin = (-55.0969 + (0.6309 * currentBpm) + (0.1988 * userWeight) + (0.2017 * userAge)) / 4.184;
+    } else {
+      calsPerMin = (-20.4022 + (0.4472 * currentBpm) - (0.1263 * userWeight) + (0.0740 * userAge)) / 4.184;
+    }
+    if (calsPerMin < 0) calsPerMin = 0;
+    totalCalories += calsPerMin / 60;
+    
+    // BPM Prompt Logic (Every 30 seconds, during active workout only)
+    if (currentPhase !== 'cooldown') {
+      bpmPromptTimer++;
+      if (bpmPromptTimer >= 30) {
+        showBpmPrompt();
+        bpmPromptTimer = 0;
+      }
+    }
+  }
   
   totalSecsPassed++;
   phaseSecsRemaining--;
@@ -286,8 +385,38 @@ function tick() {
   updateUI();
 }
 
+function showBpmPrompt() {
+  if (isBpmPromptActive) return; // Don't trigger if already open
+  isBpmPromptActive = true;
+  playSoftDing();
+  const overlay = document.getElementById('bpm-overlay');
+  overlay.classList.add('active');
+  
+  const input = document.getElementById('bpm-input');
+  input.value = '';
+  // Small delay ensures the display transition has started before focusing
+  setTimeout(() => input.focus(), 50);
+}
+
+// BPM Input Logic
+document.getElementById('bpm-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const val = parseInt(e.target.value, 10);
+    if (!isNaN(val) && val > 30 && val < 250) {
+      currentBpm = val;
+    }
+    document.getElementById('bpm-overlay').classList.remove('active');
+    isBpmPromptActive = false;
+    // Remove focus to prevent ghost typing
+    e.target.blur(); 
+  }
+});
+
 // Handle Spacebar Logic
 document.addEventListener('keydown', (e) => {
+  // If BPM prompt is active, spacebar shouldn't trigger pause
+  if (isBpmPromptActive) return;
+
   if (e.code === 'Space' && document.getElementById('tracker-screen').classList.contains('active')) {
     e.preventDefault(); // Prevent page scroll
     
@@ -329,6 +458,10 @@ function startWorkout() {
   slowMin = parseFloat(document.getElementById('input-slow').value) || 2;
   fastMin = parseFloat(document.getElementById('input-fast').value) || 3;
   
+  userAge = parseFloat(document.getElementById('input-age').value) || 22;
+  userWeight = parseFloat(document.getElementById('input-weight').value) || 96;
+  userIsMale = document.getElementById('input-gender').value === 'male';
+  
   const setMinutes = slowMin + fastMin;
   
   // Calculate total sets
@@ -338,6 +471,11 @@ function startWorkout() {
   // Initialize state
   totalSecsPassed = 0;
   totalDistanceKm = 0;
+  totalCalories = 0;
+  currentBpm = 80; // Default resting BPM until first entry
+  bpmPromptTimer = 0;
+  isBpmPromptActive = false;
+  document.getElementById('bpm-overlay').classList.remove('active');
   phaseSecsRemaining = Math.floor(slowMin * 60);
   
   // Reset Pause State
