@@ -499,12 +499,17 @@ function startWorkout() {
   if (!audioCtx) audioCtx = new AudioContext();
   
   // Parse inputs
-  totalMinutesInput = parseFloat(document.getElementById('input-minutes').value) || 60;
-  slowMin = parseFloat(document.getElementById('input-slow').value) || 2;
-  fastMin = parseFloat(document.getElementById('input-fast').value) || 3;
+  const safeParse = (id, def) => {
+    const val = parseFloat(document.getElementById(id).value);
+    return isNaN(val) ? def : val;
+  };
+
+  totalMinutesInput = safeParse('input-minutes', 60);
+  slowMin = safeParse('input-slow', 2);
+  fastMin = safeParse('input-fast', 3);
   
-  userAge = parseFloat(document.getElementById('input-age').value) || 22;
-  userWeight = parseFloat(document.getElementById('input-weight').value) || 96;
+  userAge = safeParse('input-age', 22);
+  userWeight = safeParse('input-weight', 96);
   userIsMale = document.getElementById('input-gender').value === 'male';
   
   const setMinutes = slowMin + fastMin;
